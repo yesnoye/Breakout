@@ -1,23 +1,37 @@
 import acm.graphics.GLabel;
 import acm.graphics.GObject;
+import acm.graphics.GOval;
+import acm.graphics.GRect;
 import acm.program.GraphicsProgram;
 
 import java.awt.*;
 import java.awt.event.MouseEvent;
 
-public class Breakout extends GraphicsProgram {
+import svu.csc213.Dialog;
+
+class Breakout extends GraphicsProgram {
 
     private Ball ball;
     private Paddle paddle;
+    private ColumnBreaker colBreak;
+
+    private GLabel livesLabel;
+    private GLabel pointsLabel;
+
+    private Color rowColor[] = {Color.RED, Color.RED, Color.green, Color.green, Color.black, Color.black, Color.lightGray, Color.lightGray, Color.cyan, Color.cyan};
+
+    private int rowHealth[] = {5,5,4,4,3,3,2,2,1,1};
+    private int brickRow[] = {1,2,3,4,5,6,7,8,9,10};
 
     private int numBricksInRow;
 
     private int lives = 3;
-    private GLabel livesLabel;
-
-    private GLabel gameOver;
+    private int points = 0;
 
 
+    //makes the bricks under the brick you just broke break
+    private int test;
+    private boolean unstable = false;
 
     @Override
     public void init(){
@@ -28,9 +42,9 @@ public class Breakout extends GraphicsProgram {
             for (int col = 0; col < numBricksInRow; col++) {
 
                 double brickX = 10 + col * (Brick.WIDTH + 5);
-                double brickY = 4 * Brick.HEIGHT + row * (Brick.HEIGHT + 5);
+                double brickY = Brick.HEIGHT + row * (Brick.HEIGHT + 5);
 
-                Brick brick = new Brick(brickX, brickY, Color.RED);
+                Brick brick = new Brick(brickX, brickY, rowColor[row], rowHealth[row], col, brickRow[row], rowHealth[row]);
                 add(brick);
             }
         }
@@ -41,7 +55,15 @@ public class Breakout extends GraphicsProgram {
         paddle = new Paddle(230, 430, 50 ,10);
         add(paddle);
 
-        livesLabel = new GLabel("lives :" + (lives));
+        colBreak = new ColumnBreaker(10, this.getGCanvas());
+
+
+        livesLabel = new GLabel("Lives :" + lives);
+        add(livesLabel, getWidth()/3, 10);
+
+        pointsLabel = new GLabel("Points :" + points);
+        add(pointsLabel, (getWidth()/3)*2, 10);
+
 
     }
 
@@ -60,6 +82,64 @@ public class Breakout extends GraphicsProgram {
         }
     }
 
+    private void columnBreaker(int col, int row){
+        add(colBreak, 10+(col*Brick.WIDTH) + (5*col), row * Brick.HEIGHT + 5*row);
+        while (true) {
+            colBreak.handleMove();
+            handleColBreak();
+            pause(0);
+            if (colBreak.getY() >= 430){
+                remove(colBreak);
+                break;
+            }
+        }
+        gameLoop();
+    }
+
+    private void completeCheck(){
+        if (getElementCount() == 2){
+            Dialog.showMessage("you win");
+        }
+    }
+
+    private void handleColBreak(){
+        GObject obj = null;
+
+        // check to see if the ball is about to hit something
+
+        if(obj == null){
+            // check the top right corner
+            obj = this.getElementAt(colBreak.getX()+colBreak.getWidth(), colBreak.getY());
+        }
+
+        if(obj == null){
+            // check the top left corner
+            obj = this.getElementAt(colBreak.getX(), colBreak.getY());
+        }
+        //check the bottom right corner for collision
+        if (obj == null) {
+            obj = this.getElementAt(colBreak.getX() + colBreak.getWidth(), colBreak.getY() + colBreak.getHeight());
+        }
+        //check the bottom left corner for collision
+        if (obj == null) {
+            obj = this.getElementAt(colBreak.getX(), colBreak.getY() + colBreak.getHeight());
+        }
+
+        // see if we hit something
+        if(obj != null){
+            if(obj instanceof Brick){
+                points += ((Brick) obj).getValue();
+                pointsLabel.setLabel("Points :" + points);
+                remove(obj);
+                if (points == 450){
+                    Dialog.showMessage("you win");
+                }
+
+            }
+
+        }
+    }
+
     private void gameLoop(){
         while(true){
             // move the ball
@@ -71,9 +151,7 @@ public class Breakout extends GraphicsProgram {
             // handle losing the ball
             if(ball.lost){
                 handleLoss();
-            }
-
-            pause(5);
+            } pause(5);
         }
     }
 
@@ -126,7 +204,31 @@ public class Breakout extends GraphicsProgram {
                 // bounce the ball
                 ball.bounce();
                 // destroy the brick
-                this.remove(obj);
+                ((Brick) obj).brickHealth -=1;
+                switch (((Brick) obj).brickHealth){
+                    case 1: ((Brick) obj).setFillColor(Color.cyan);
+                        break;
+                    case 2: ((Brick) obj).setFillColor(Color.green);
+                        break;
+                    case 3: ((Brick) obj).setFillColor(Color.yellow);
+                        break;
+                    case 4: ((Brick) obj).setFillColor(Color.orange);
+                        break;
+                    case 5: ((Brick) obj).setFillColor(Color.red);
+                        break;
+                }
+                if (((Brick) obj).brickHealth == 0){
+                    if (unstable){
+                        columnBreaker(((Brick) obj).getColumn(), ((Brick) obj).getRow());
+                    } else {
+                        remove(obj);
+                        points += ((Brick) obj).getValue();
+                        pointsLabel.setLabel("Points :" + points);
+                        if (points == 450){
+                            Dialog.showMessage("you win");
+                        }
+                    }
+                }
             }
 
         }
@@ -139,19 +241,23 @@ public class Breakout extends GraphicsProgram {
         reset();
     }
 
-    private void reset() {
+    private void reset(){
+        ball.setLocation(getWidth()/2, 350);
+        paddle.setLocation(230, 430);
+        waitForClick();
         lives -= 1;
-        livesLabel.setLabel("Lives:" + " " + String.valueOf(lives));
-        if (lives == 0) {
-
-            gameOver = new GLabel("GAME OVER");
-            add(gameOver, getWidth() - getWidth() / 2, getHeight() - getHeight() / 2);
-
-            removeAll();
-            lives = 3;
-            init();
-            return;
+        livesLabel.setLabel("Lives :" + lives);
+        if (lives == 0){
+            Dialog.showMessage("You lose");
+            if (Dialog.getYesOrNo("Try Again?")) {
+                lives = 3;
+                points = 0;
+                pointsLabel.setLabel("Points :" + points);
+                livesLabel.setLabel("Lives :" + lives);
+                run();
+            }
         }
+    }
 
     public static void main(String[] args) {
         new Breakout().start();
